@@ -45,10 +45,13 @@ class FlowInversionGuider(comfy.samplers.CFGGuider):
     ) -> torch.Tensor:
         opts: Dict[str, Any] = {} if model_options is None else model_options
         branch: str = opts.get("flow_branch", "target")
+        phase: str = opts.get("flow_phase", "edit")
         pos: Any = self.conds.get(f"{branch}_positive", None)
         neg: Any = self.conds.get(f"{branch}_negative", None)
         cfg: float = (
-            self.cfg_inversion if branch == "source" else self.cfg_target
+            self.cfg_inversion
+            if phase == "inversion"
+            else self.cfg_target
         )
         return comfy.samplers.sampling_function(
             self.inner_model,
@@ -89,31 +92,39 @@ class _UnifiedFlowKSampler:
             x: torch.Tensor,
             sigma: torch.Tensor,
             branch: str,
+            phase: str,
         ) -> torch.Tensor:
             s_in: torch.Tensor = x.new_ones([x.shape[0]])
             options: Dict[str, Any] = extra_args.setdefault(
                 "model_options", {}
             )
             options["flow_branch"] = branch
+            options["flow_phase"] = phase
             return model_wrap(x, sigma * s_in, **extra_args)
 
-        def source_eval(
+        def source_eval_inv(
             x: torch.Tensor,
             s: torch.Tensor,
         ) -> torch.Tensor:
-            return evaluate_branch(x, s, "source")
+            return evaluate_branch(x, s, "source", "inversion")
+
+        def source_eval_edit(
+            x: torch.Tensor,
+            s: torch.Tensor,
+        ) -> torch.Tensor:
+            return evaluate_branch(x, s, "source", "edit")
 
         def target_eval(
             x: torch.Tensor,
             s: torch.Tensor,
         ) -> torch.Tensor:
-            return evaluate_branch(x, s, "target")
+            return evaluate_branch(x, s, "target", "edit")
 
         sigmas_inversion: torch.Tensor = sigmas.flip(0)
         start_state: torch.Tensor = latent_image
 
         inverted_noise, trajectory = self.inverter.invert(
-            model_fn=source_eval,
+            model_fn=source_eval_inv,
             source_latent=start_state,
             sigmas_inversion=sigmas_inversion,
             callback=None,
@@ -121,7 +132,9 @@ class _UnifiedFlowKSampler:
         self.trajectory = trajectory
 
         source_steer = (
-            source_eval if self.editor.structure_fidelity > 0.0 else None
+            source_eval_edit
+            if self.editor.structure_fidelity > 0.0
+            else None
         )
         return self.editor.sample_edit(
             model_target_fn=target_eval,

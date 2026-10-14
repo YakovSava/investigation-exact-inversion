@@ -168,9 +168,16 @@ class FlowEditor:
                     traj_idx
                 ].to(x_current.device)
 
+                fidelity: float = self.structure_fidelity
+                sigma_val: float = float(sigma_curr.item())
+                if self.structure_fidelity < 1.0 and sigma_val < 0.3:
+                    fidelity = self.structure_fidelity * max(
+                        0.0, sigma_val / 0.3
+                    )
+
                 if (
                     model_source_fn is not None
-                    and self.structure_fidelity > 0.0
+                    and fidelity > 0.0
                 ):
                     denoised_source: torch.Tensor = model_source_fn(
                         x_current, sigma_eval
@@ -193,9 +200,9 @@ class FlowEditor:
                     )
 
                     step_update: torch.Tensor = (
-                        -self.structure_fidelity * src_disp
-                        + (1.0 - self.structure_fidelity) * (dt * v_target)
-                        + self.structure_fidelity * (dt * v_delta_lead)
+                        -fidelity * src_disp
+                        + (1.0 - fidelity) * (dt * v_target)
+                        + fidelity * (dt * v_delta_lead)
                     )
                     v_steered = v_delta
                 else:
@@ -206,8 +213,8 @@ class FlowEditor:
                         v_smooth, v_prev, dt, dt_prev, self.phase_compensation
                     )
                     step_update = (
-                        -self.structure_fidelity * src_disp
-                        + (1.0 - self.structure_fidelity) * (dt * v_lead)
+                        -fidelity * src_disp
+                        + (1.0 - fidelity) * (dt * v_lead)
                     )
                     v_steered = v_target
             else:
