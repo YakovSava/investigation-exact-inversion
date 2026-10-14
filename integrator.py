@@ -8,6 +8,7 @@ from .math_core import (
     blend_inpainting_latents,
     compute_phase_lead_velocity,
     compute_velocity,
+    is_active_mask,
 )
 
 
@@ -223,6 +224,7 @@ class FlowEditor:
 
             if (
                 mask is not None
+                and is_active_mask(mask)
                 and has_trajectory
                 and trajectory is not None
                 and len(trajectory.states) > traj_idx

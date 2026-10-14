@@ -17,7 +17,7 @@ def compute_velocity(
     x: torch.Tensor,
     sigma: torch.Tensor,
     denoised: torch.Tensor,
-    epsilon: float = 1e-5,
+    epsilon: float = 1e-3,
 ) -> torch.Tensor:
     sigma_clamped: torch.Tensor = torch.clamp(sigma, min=epsilon)
     sigma_expanded: torch.Tensor = append_dims(sigma_clamped, x.ndim)
@@ -90,13 +90,25 @@ def apply_lipschitz_stabilization(
     return v_reference + delta_v * scale
 
 
+def is_active_mask(mask: Optional[torch.Tensor]) -> bool:
+    if mask is None:
+        return False
+    if mask.numel() == 0:
+        return False
+    if torch.count_nonzero(mask) == 0:
+        return False
+    if float(mask.max().item()) <= 1e-4:
+        return False
+    return True
+
+
 def blend_inpainting_latents(
     target_latent: torch.Tensor,
     source_latent: torch.Tensor,
     mask: Optional[torch.Tensor],
     blur_kernel_size: int = 5,
 ) -> torch.Tensor:
-    if mask is None:
+    if not is_active_mask(mask) or mask is None:
         return target_latent
     mask_prepared: torch.Tensor = mask.to(
         device=target_latent.device, dtype=target_latent.dtype
@@ -105,20 +117,35 @@ def blend_inpainting_latents(
         mask_prepared = mask_prepared.unsqueeze(0).unsqueeze(0)
     elif mask_prepared.ndim == 3:
         mask_prepared = mask_prepared.unsqueeze(1)
-    if mask_prepared.shape[-2:] != target_latent.shape[-2:]:
+    spatial_shape: Tuple[int, int] = (
+        target_latent.shape[-2],
+        target_latent.shape[-1],
+    )
+    if mask_prepared.shape[-2:] != spatial_shape:
         mask_prepared = F.interpolate(
             mask_prepared,
-            size=target_latent.shape[-2:],
+            size=spatial_shape,
             mode="bilinear",
             align_corners=False,
         )
     if blur_kernel_size > 1 and blur_kernel_size % 2 == 1:
         pad: int = blur_kernel_size // 2
-        kernel_1d: torch.Tensor = torch.ones(
-            1, 1, blur_kernel_size, blur_kernel_size,
+        kernel_2d: torch.Tensor = torch.ones(
+            1,
+            1,
+            blur_kernel_size,
+            blur_kernel_size,
             device=mask_prepared.device,
             dtype=mask_prepared.dtype,
         ) / float(blur_kernel_size * blur_kernel_size)
-        mask_prepared = F.conv2d(mask_prepared, kernel_1d, padding=pad)
+        mask_prepared = F.conv2d(mask_prepared, kernel_2d, padding=pad)
     mask_clamped: torch.Tensor = torch.clamp(mask_prepared, 0.0, 1.0)
-    return (1.0 - mask_clamped) * source_latent + mask_clamped * target_latent
+    mask_expanded: torch.Tensor = (
+        mask_clamped.unsqueeze(2)
+        if target_latent.ndim == 5
+        else mask_clamped
+    )
+    return (
+        (1.0 - mask_expanded) * source_latent
+        + mask_expanded * target_latent
+    )
