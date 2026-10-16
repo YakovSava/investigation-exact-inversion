@@ -148,6 +148,10 @@ class FlowEditor:
             and len(trajectory.displacements) >= num_steps
         )
 
+        sigma_max: float = float(sigmas_generation[0].item())
+        if sigma_max < 1e-6:
+            sigma_max = 1.0
+
         for step_idx in range(num_steps):
             sigma_curr: torch.Tensor = sigmas_generation[step_idx]
             sigma_next: torch.Tensor = sigmas_generation[step_idx + 1]
@@ -204,8 +208,12 @@ class FlowEditor:
                             self.phase_compensation,
                         )
                     )
+                    sigma_ratio: float = sigma_val / sigma_max
+                    effective_strength: float = (
+                        self.edit_strength * sigma_ratio
+                    )
                     v_edit: torch.Tensor = (
-                        v_target + self.edit_strength * v_delta_lead
+                        v_target + effective_strength * v_delta_lead
                     )
                 else:
                     v_edit = v_target
