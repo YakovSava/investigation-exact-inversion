@@ -196,28 +196,15 @@ class FlowEditor:
                         x_current, sigma_eval, denoised_source
                     )
                     v_delta: torch.Tensor = v_target - v_source
-                    v_delta_smooth: torch.Tensor = apply_history_smoothing(
-                        v_delta, velocity_history, self.history_smoothing
-                    )
-                    v_delta_lead: torch.Tensor = (
-                        compute_phase_lead_velocity(
-                            v_delta_smooth,
-                            v_prev,
-                            dt,
-                            dt_prev,
-                            self.phase_compensation,
-                        )
-                    )
                     sigma_ratio: float = sigma_val / sigma_max
                     effective_strength: float = (
                         self.edit_strength * sigma_ratio
                     )
                     v_edit: torch.Tensor = (
-                        v_target + effective_strength * v_delta_lead
+                        v_target + effective_strength * v_delta
                     )
                 else:
                     v_edit = v_target
-                    v_delta_lead = torch.zeros_like(v_target)
 
                 v_edit_smooth: torch.Tensor = apply_history_smoothing(
                     v_edit, velocity_history, self.history_smoothing
