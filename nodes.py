@@ -1,4 +1,5 @@
 from typing import Any, Dict, Optional, Tuple
+import math
 import torch
 
 import comfy.samplers
@@ -131,6 +132,23 @@ class _UnifiedFlowKSampler:
         )
         self.trajectory = trajectory
 
+        eta: float = min(max(self.editor.edit_strength, 0.0), 1.0)
+        if eta > 0.0:
+            random_noise: torch.Tensor = torch.randn_like(
+                inverted_noise
+            )
+            inv_std: torch.Tensor = inverted_noise.std().clamp(
+                min=1e-6
+            )
+            rand_std: torch.Tensor = random_noise.std().clamp(
+                min=1e-6
+            )
+            random_noise = random_noise * (inv_std / rand_std)
+            inverted_noise = (
+                math.sqrt(1.0 - eta) * inverted_noise
+                + math.sqrt(eta) * random_noise
+            )
+
         source_steer = (
             source_eval_edit
             if self.editor.structure_fidelity > 0.0
@@ -186,7 +204,7 @@ class FlowInversionKSampler:
                 ),
                 "edit_strength": (
                     "FLOAT",
-                    {"default": 1.0, "min": 0.0, "max": 5.0, "step": 0.1},
+                    {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05},
                 ),
                 "phase_correction": (
                     "FLOAT",

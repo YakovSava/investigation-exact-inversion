@@ -197,11 +197,8 @@ class FlowEditor:
                     )
                     v_delta: torch.Tensor = v_target - v_source
                     sigma_ratio: float = sigma_val / sigma_max
-                    effective_strength: float = (
-                        self.edit_strength * sigma_ratio
-                    )
                     v_edit: torch.Tensor = (
-                        v_target + effective_strength * v_delta
+                        v_target + sigma_ratio * v_delta
                     )
                 else:
                     v_edit = v_target
