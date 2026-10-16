@@ -151,7 +151,7 @@ class _UnifiedFlowKSampler:
 
         source_steer = (
             source_eval_edit
-            if self.editor.structure_fidelity > 0.0
+            if self.editor.structure_fidelity > 0.0 and eta <= 0.0
             else None
         )
         return self.editor.sample_edit(
