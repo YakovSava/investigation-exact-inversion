@@ -184,6 +184,10 @@ class FlowInversionKSampler:
                     "FLOAT",
                     {"default": 0.8, "min": 0.0, "max": 1.0, "step": 0.05},
                 ),
+                "edit_strength": (
+                    "FLOAT",
+                    {"default": 1.0, "min": 0.0, "max": 5.0, "step": 0.1},
+                ),
                 "phase_correction": (
                     "FLOAT",
                     {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05},
@@ -236,6 +240,7 @@ class FlowInversionKSampler:
         cfg_inversion: float,
         denoise: float,
         structure_fidelity: float,
+        edit_strength: float,
         phase_correction: float,
         history_smoothing: float,
         scheduler: str,
@@ -260,6 +265,7 @@ class FlowInversionKSampler:
             phase_compensation=phase_correction,
             history_smoothing=history_smoothing,
             structure_fidelity=structure_fidelity,
+            edit_strength=edit_strength,
         )
 
         active_mask: Optional[torch.Tensor] = (
@@ -511,6 +517,7 @@ class FlowInversionSamplerNode:
                 cfg_inversion=1.0,
                 denoise=1.0,
                 structure_fidelity=structure_fidelity,
+                edit_strength=1.0,
                 phase_correction=phase_compensation,
                 history_smoothing=history_smoothing,
                 scheduler=scheduler,
@@ -677,6 +684,7 @@ class FlowInversionImg2ImgNode:
             cfg_inversion=cfg_inversion,
             denoise=1.0,
             structure_fidelity=structure_fidelity,
+            edit_strength=1.0,
             phase_correction=phase_correction,
             history_smoothing=history_smoothing,
             scheduler=scheduler,

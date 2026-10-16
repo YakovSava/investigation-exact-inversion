@@ -118,10 +118,12 @@ class FlowEditor:
         phase_compensation: float = 1.0,
         history_smoothing: float = 0.25,
         structure_fidelity: float = 0.75,
+        edit_strength: float = 1.0,
     ) -> None:
         self.phase_compensation: float = phase_compensation
         self.history_smoothing: float = history_smoothing
         self.structure_fidelity: float = structure_fidelity
+        self.edit_strength: float = edit_strength
 
     def sample_edit(
         self,
@@ -202,7 +204,9 @@ class FlowEditor:
                             self.phase_compensation,
                         )
                     )
-                    v_edit: torch.Tensor = v_target + v_delta_lead
+                    v_edit: torch.Tensor = (
+                        v_target + self.edit_strength * v_delta_lead
+                    )
                 else:
                     v_edit = v_target
                     v_delta_lead = torch.zeros_like(v_target)
