@@ -151,6 +151,11 @@ class FlowEditor:
             sigma_next: torch.Tensor = sigmas_generation[step_idx + 1]
             dt: float = float((sigma_next - sigma_curr).item())
 
+            if abs(dt) < 1e-10:
+                if callback is not None:
+                    callback(step_idx, x_current, num_steps)
+                continue
+
             sigma_eval: torch.Tensor = sigma_curr.expand(
                 x_current.shape[0]
             ).to(x_current.device)
@@ -175,10 +180,9 @@ class FlowEditor:
                         0.0, sigma_val / 0.3
                     )
 
-                if (
-                    model_source_fn is not None
-                    and fidelity > 0.0
-                ):
+                v_reconstruct: torch.Tensor = -src_disp / dt
+
+                if model_source_fn is not None:
                     denoised_source: torch.Tensor = model_source_fn(
                         x_current, sigma_eval
                     )
@@ -198,30 +202,30 @@ class FlowEditor:
                             self.phase_compensation,
                         )
                     )
-
-                    step_update: torch.Tensor = (
-                        -fidelity * src_disp
-                        + (1.0 - fidelity) * (dt * v_target)
-                        + fidelity * (dt * v_delta_lead)
-                    )
-                    v_steered = v_delta
+                    v_edit: torch.Tensor = v_target + v_delta_lead
                 else:
-                    v_smooth: torch.Tensor = apply_history_smoothing(
-                        v_target, velocity_history, self.history_smoothing
-                    )
-                    v_lead: torch.Tensor = compute_phase_lead_velocity(
-                        v_smooth, v_prev, dt, dt_prev, self.phase_compensation
-                    )
-                    step_update = (
-                        -fidelity * src_disp
-                        + (1.0 - fidelity) * (dt * v_lead)
-                    )
-                    v_steered = v_target
+                    v_edit = v_target
+                    v_delta_lead = torch.zeros_like(v_target)
+
+                v_edit_smooth: torch.Tensor = apply_history_smoothing(
+                    v_edit, velocity_history, self.history_smoothing
+                )
+                v_edit_lead: torch.Tensor = compute_phase_lead_velocity(
+                    v_edit_smooth, v_prev, dt, dt_prev,
+                    self.phase_compensation,
+                )
+
+                v_final: torch.Tensor = (
+                    fidelity * v_reconstruct
+                    + (1.0 - fidelity) * v_edit_lead
+                )
+                step_update: torch.Tensor = dt * v_final
+                v_steered: torch.Tensor = v_edit
             else:
-                v_smooth = apply_history_smoothing(
+                v_smooth: torch.Tensor = apply_history_smoothing(
                     v_target, velocity_history, self.history_smoothing
                 )
-                v_lead = compute_phase_lead_velocity(
+                v_lead: torch.Tensor = compute_phase_lead_velocity(
                     v_smooth, v_prev, dt, dt_prev, self.phase_compensation
                 )
                 step_update = dt * v_lead
