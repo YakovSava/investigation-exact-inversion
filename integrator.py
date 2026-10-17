@@ -206,7 +206,15 @@ class FlowEditor:
                             v_smooth, v_prev, dt, dt_prev,
                             self.phase_compensation,
                         )
-                        step_update = dt * v_lead
+                        sigma_val: float = float(sigma_curr.item())
+                        w_anchor: float = (
+                            self.structure_fidelity
+                            * max(0.0, 1.0 - sigma_val / 0.35)
+                        )
+                        step_update = (
+                            -w_anchor * src_disp
+                            + (1.0 - w_anchor) * (dt * v_lead)
+                        )
                         v_steered = v_steer
                 else:
                     v_smooth = apply_history_smoothing(
