@@ -229,6 +229,10 @@ class FlowInversionKSampler:
                     comfy.samplers.SCHEDULER_NAMES,
                     {"default": "normal"},
                 ),
+                "fidelity_cutoff": (
+                    "FLOAT",
+                    {"default": 0.22, "min": 0.05, "max": 0.60, "step": 0.01},
+                ),
             },
             "optional": {
                 "source_positive": ("CONDITIONING",),
@@ -273,6 +277,7 @@ class FlowInversionKSampler:
         phase_correction: float,
         history_smoothing: float,
         scheduler: str,
+        fidelity_cutoff: float = 0.22,
         source_positive: Optional[Any] = None,
         source_negative: Optional[Any] = None,
         optional_vae: Optional[Any] = None,
@@ -295,6 +300,7 @@ class FlowInversionKSampler:
             history_smoothing=history_smoothing,
             structure_fidelity=structure_fidelity,
             edit_strength=edit_strength,
+            fidelity_cutoff=fidelity_cutoff,
         )
 
         active_mask: Optional[torch.Tensor] = (
