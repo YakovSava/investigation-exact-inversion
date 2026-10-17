@@ -6,7 +6,6 @@ from .math_core import (
     apply_history_smoothing,
     apply_lipschitz_stabilization,
     blend_inpainting_latents,
-    compute_differential_mask,
     compute_phase_lead_velocity,
     compute_velocity,
     is_active_mask,
@@ -181,9 +180,6 @@ class FlowEditor:
                     traj_idx
                 ].to(x_current.device)
 
-                sigma_val: float = float(sigma_curr.item())
-                sigma_anneal: float = min(1.0, max(0.0, sigma_val / 0.15))
-                effective_strength: float = self.edit_strength * sigma_anneal
                 v_reconstruct: torch.Tensor = -src_disp / dt
 
                 v_target_smooth: torch.Tensor = apply_history_smoothing(
@@ -202,18 +198,16 @@ class FlowEditor:
                         x_current, sigma_eval, denoised_source
                     )
                     v_delta: torch.Tensor = v_target - v_source
-                    mask_edit: torch.Tensor = compute_differential_mask(
-                        v_target, v_source
+                    total_strength: float = (
+                        self.edit_strength
+                        + (1.0 - self.structure_fidelity)
                     )
-                    v_edit: torch.Tensor = (
-                        v_target_lead + effective_strength * v_delta
+                    step_update: torch.Tensor = (
+                        -src_disp + total_strength * (dt * v_delta)
                     )
-                    v_combined: torch.Tensor = (
-                        (1.0 - mask_edit) * v_reconstruct
-                        + mask_edit * v_edit
+                    v_steered: torch.Tensor = (
+                        v_reconstruct + total_strength * v_delta
                     )
-                    step_update: torch.Tensor = dt * v_combined
-                    v_steered: torch.Tensor = v_combined
                 else:
                     step_update = (
                         -self.structure_fidelity * src_disp
