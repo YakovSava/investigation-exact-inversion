@@ -122,11 +122,13 @@ class FlowEditor:
         history_smoothing: float = 0.25,
         structure_fidelity: float = 0.75,
         edit_strength: float = 1.0,
+        fidelity_cutoff: float = 0.22,
     ) -> None:
         self.phase_compensation: float = phase_compensation
         self.history_smoothing: float = history_smoothing
         self.structure_fidelity: float = structure_fidelity
         self.edit_strength: float = edit_strength
+        self.fidelity_cutoff: float = fidelity_cutoff
 
     def sample_edit(
         self,
@@ -209,7 +211,7 @@ class FlowEditor:
                         sigma_val: float = float(sigma_curr.item())
                         w_anchor: float = (
                             self.structure_fidelity
-                            * max(0.0, 1.0 - sigma_val / 0.35)
+                            * max(0.0, 1.0 - sigma_val / self.fidelity_cutoff)
                         )
                         step_update = (
                             -w_anchor * src_disp
