@@ -72,10 +72,12 @@ class _UnifiedFlowKSampler:
         inverter: FlowInverter,
         editor: FlowEditor,
         mask: Optional[torch.Tensor],
+        has_source: bool = True,
     ) -> None:
         self.inverter: FlowInverter = inverter
         self.editor: FlowEditor = editor
         self.mask: Optional[torch.Tensor] = mask
+        self.has_source: bool = has_source
         self.trajectory: Optional[FlowTrajectory] = None
 
     def sample(
@@ -132,11 +134,12 @@ class _UnifiedFlowKSampler:
         )
         self.trajectory = trajectory
 
+        source_steer = source_eval_edit if self.has_source else None
         return self.editor.sample_edit(
             model_target_fn=target_eval,
             initial_latent=inverted_noise,
             sigmas_generation=sigmas,
-            model_source_fn=source_eval_edit,
+            model_source_fn=source_steer,
             trajectory=trajectory,
             mask=self.mask,
             callback=None,
@@ -267,10 +270,12 @@ class FlowInversionKSampler:
         active_mask: Optional[torch.Tensor] = (
             mask if is_active_mask(mask) else None
         )
+        has_source: bool = source_positive is not None
         sampler_obj: _UnifiedFlowKSampler = _UnifiedFlowKSampler(
             inverter=inverter,
             editor=editor,
             mask=active_mask,
+            has_source=has_source,
         )
 
         sigmas: torch.Tensor = comfy.samplers.calculate_sigmas(

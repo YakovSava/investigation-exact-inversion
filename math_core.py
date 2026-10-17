@@ -158,9 +158,14 @@ def compute_differential_mask(
 ) -> torch.Tensor:
     v_diff: torch.Tensor = v_target - v_source
     energy: torch.Tensor = torch.mean(v_diff ** 2, dim=1, keepdim=True)
-    e_mean: float = float(energy.mean().item())
-    if e_mean < 1e-5:
+    flat_energy: torch.Tensor = energy.reshape(-1)
+    if flat_energy.numel() == 0:
         return torch.zeros_like(energy)
-    normalized_energy: torch.Tensor = energy / (e_mean + 1e-6)
-    return torch.sigmoid(sensitivity * (normalized_energy - 1.0))
+    max_energy: float = float(torch.max(flat_energy).item())
+    if max_energy < 1e-5:
+        return torch.zeros_like(energy)
+    k: int = max(1, int(flat_energy.numel() * 0.25))
+    bg_floor: float = float(torch.kthvalue(flat_energy, k).values.item())
+    threshold: float = max(bg_floor * 2.5, 1e-4)
+    return torch.sigmoid(sensitivity * (energy / threshold - 1.0))
 

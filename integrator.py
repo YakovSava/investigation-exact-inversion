@@ -181,6 +181,14 @@ class FlowEditor:
                 effective_strength: float = self.edit_strength * sigma_anneal
                 v_reconstruct: torch.Tensor = -src_disp / dt
 
+                v_target_smooth: torch.Tensor = apply_history_smoothing(
+                    v_target, velocity_history, self.history_smoothing
+                )
+                v_target_lead: torch.Tensor = compute_phase_lead_velocity(
+                    v_target_smooth, v_prev, dt, dt_prev,
+                    self.phase_compensation,
+                )
+
                 if model_source_fn is not None:
                     denoised_source: torch.Tensor = model_source_fn(
                         x_current, sigma_eval
@@ -192,33 +200,24 @@ class FlowEditor:
                     mask_edit: torch.Tensor = compute_differential_mask(
                         v_target, v_source
                     )
-                else:
-                    v_delta = torch.zeros_like(v_target)
-                    mask_edit = torch.zeros(
-                        (v_target.shape[0], 1) + v_target.shape[2:],
-                        device=v_target.device,
-                        dtype=v_target.dtype,
+                    edit_direction: torch.Tensor = (
+                        effective_strength * v_delta
+                        + (1.0 - self.structure_fidelity)
+                        * (v_target_lead - v_reconstruct)
                     )
-
-                v_target_smooth: torch.Tensor = apply_history_smoothing(
-                    v_target, velocity_history, self.history_smoothing
-                )
-                v_target_lead: torch.Tensor = compute_phase_lead_velocity(
-                    v_target_smooth, v_prev, dt, dt_prev,
-                    self.phase_compensation,
-                )
-
-                edit_direction: torch.Tensor = (
-                    effective_strength * v_delta
-                    + (1.0 - self.structure_fidelity)
-                    * (v_target_lead - v_reconstruct)
-                )
-                step_update: torch.Tensor = (
-                    -src_disp + dt * (mask_edit * edit_direction)
-                )
-                v_steered: torch.Tensor = (
-                    v_reconstruct + mask_edit * edit_direction
-                )
+                    step_update: torch.Tensor = (
+                        -src_disp + dt * (mask_edit * edit_direction)
+                    )
+                    v_steered: torch.Tensor = (
+                        v_reconstruct + mask_edit * edit_direction
+                    )
+                else:
+                    step_update = (
+                        -self.structure_fidelity * src_disp
+                        + (1.0 - self.structure_fidelity)
+                        * (dt * v_target_lead)
+                    )
+                    v_steered = v_target_lead
             else:
                 v_smooth: torch.Tensor = apply_history_smoothing(
                     v_target, velocity_history, self.history_smoothing
