@@ -137,11 +137,69 @@ def test_inversion_reconstruction_roundtrip() -> Tuple[float, float]:
     return mse_error, max_error
 
 
+def test_localized_differential_editing() -> None:
+    torch.manual_seed(42)
+    clean_latent: torch.Tensor = torch.randn(1, 4, 32, 32)
+    target_latent: torch.Tensor = clean_latent.clone()
+    target_latent[:, :, 5:15, 5:15] += 5.0
+
+    sigmas_gen: torch.Tensor = torch.linspace(1.0, 0.0, 21)
+    sigmas_inv: torch.Tensor = sigmas_gen.flip(0)
+
+    inverter: FlowInverter = FlowInverter(
+        phase_correction=1.0,
+        history_smoothing=0.3,
+        max_corrector_iters=1,
+    )
+
+    def model_src(x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+        return mock_curved_flow_model(x, sigma, clean_latent)
+
+    def model_tgt(x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+        return mock_curved_flow_model(x, sigma, target_latent)
+
+    inverted_noise, trajectory = inverter.invert(
+        model_fn=model_src,
+        source_latent=clean_latent,
+        sigmas_inversion=sigmas_inv,
+    )
+
+    editor: FlowEditor = FlowEditor(
+        phase_compensation=1.0,
+        history_smoothing=0.25,
+        structure_fidelity=0.8,
+        edit_strength=1.5,
+    )
+
+    edited_latent: torch.Tensor = editor.sample_edit(
+        model_target_fn=model_tgt,
+        initial_latent=inverted_noise,
+        sigmas_generation=sigmas_gen,
+        model_source_fn=model_src,
+        trajectory=trajectory,
+    )
+
+    bg_mse: float = float(
+        torch.mean(
+            (clean_latent[:, :, 20:, 20:] - edited_latent[:, :, 20:, 20:]) ** 2
+        ).item()
+    )
+    edit_norm: float = float(
+        torch.norm(
+            edited_latent[:, :, 5:15, 5:15] - clean_latent[:, :, 5:15, 5:15]
+        ).item()
+    )
+
+    assert bg_mse < 1e-4
+    assert edit_norm > 10.0
+
+
 def run_all_tests() -> None:
     test_velocity_and_reconstruction()
     test_phase_lead_and_smoothing()
     test_lipschitz_stabilization()
     test_inpainting_blending()
+    test_localized_differential_editing()
     mse, max_err = test_inversion_reconstruction_roundtrip()
     print(
         f"All tests passed. Inversion MSE: {mse:.6e}, Max Diff: {max_err:.6e}"

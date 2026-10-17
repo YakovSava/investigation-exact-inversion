@@ -149,3 +149,18 @@ def blend_inpainting_latents(
         (1.0 - mask_expanded) * source_latent
         + mask_expanded * target_latent
     )
+
+
+def compute_differential_mask(
+    v_target: torch.Tensor,
+    v_source: torch.Tensor,
+    sensitivity: float = 4.0,
+) -> torch.Tensor:
+    v_diff: torch.Tensor = v_target - v_source
+    energy: torch.Tensor = torch.mean(v_diff ** 2, dim=1, keepdim=True)
+    e_mean: float = float(energy.mean().item())
+    if e_mean < 1e-5:
+        return torch.zeros_like(energy)
+    normalized_energy: torch.Tensor = energy / (e_mean + 1e-6)
+    return torch.sigmoid(sensitivity * (normalized_energy - 1.0))
+
