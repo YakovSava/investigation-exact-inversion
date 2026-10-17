@@ -8,6 +8,7 @@ from .math_core import (
     blend_inpainting_latents,
     compute_phase_lead_velocity,
     compute_velocity,
+    extract_low_frequency,
     is_active_mask,
     reconstruct_denoised,
 )
@@ -123,12 +124,14 @@ class FlowEditor:
         structure_fidelity: float = 0.75,
         edit_strength: float = 1.0,
         fidelity_cutoff: float = 0.22,
+        low_frequency_boost: float = 0.5,
     ) -> None:
         self.phase_compensation: float = phase_compensation
         self.history_smoothing: float = history_smoothing
         self.structure_fidelity: float = structure_fidelity
         self.edit_strength: float = edit_strength
         self.fidelity_cutoff: float = fidelity_cutoff
+        self.low_frequency_boost: float = low_frequency_boost
 
     def sample_edit(
         self,
@@ -194,12 +197,21 @@ class FlowEditor:
                         step_update: torch.Tensor = -src_disp
                         v_steered: torch.Tensor = v_target
                     else:
+                        v_delta_effective: torch.Tensor = v_delta
+                        if self.low_frequency_boost > 0.0:
+                            v_delta_low: torch.Tensor = extract_low_frequency(
+                                v_delta
+                            )
+                            v_delta_effective = (
+                                v_delta
+                                + self.low_frequency_boost * v_delta_low
+                            )
                         total_strength: float = (
                             self.edit_strength
                             + (1.0 - self.structure_fidelity)
                         )
                         v_steer: torch.Tensor = (
-                            v_source + total_strength * v_delta
+                            v_source + total_strength * v_delta_effective
                         )
                         v_smooth: torch.Tensor = apply_history_smoothing(
                             v_steer, velocity_history, self.history_smoothing

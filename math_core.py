@@ -169,3 +169,29 @@ def compute_differential_mask(
     threshold: float = max(bg_floor * 2.5, 1e-4)
     return torch.sigmoid(sensitivity * (energy / threshold - 1.0))
 
+
+def extract_low_frequency(
+    delta: torch.Tensor,
+    kernel_size: int = 7,
+) -> torch.Tensor:
+    pad: int = kernel_size // 2
+    if delta.ndim == 4:
+        return F.avg_pool2d(
+            delta, kernel_size=kernel_size, stride=1, padding=pad
+        )
+    elif delta.ndim == 5:
+        b: int = delta.shape[0]
+        c: int = delta.shape[1]
+        t: int = delta.shape[2]
+        h: int = delta.shape[3]
+        w: int = delta.shape[4]
+        d_reshaped: torch.Tensor = delta.permute(0, 2, 1, 3, 4).reshape(
+            b * t, c, h, w
+        )
+        low_pass: torch.Tensor = F.avg_pool2d(
+            d_reshaped, kernel_size=kernel_size, stride=1, padding=pad
+        )
+        return low_pass.reshape(b, t, c, h, w).permute(0, 2, 1, 3, 4)
+    return delta
+
+

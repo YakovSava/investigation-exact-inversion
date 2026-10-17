@@ -233,6 +233,10 @@ class FlowInversionKSampler:
                     "FLOAT",
                     {"default": 0.22, "min": 0.05, "max": 0.60, "step": 0.01},
                 ),
+                "low_frequency_boost": (
+                    "FLOAT",
+                    {"default": 0.5, "min": 0.0, "max": 3.0, "step": 0.05},
+                ),
             },
             "optional": {
                 "source_positive": ("CONDITIONING",),
@@ -278,6 +282,7 @@ class FlowInversionKSampler:
         history_smoothing: float,
         scheduler: str,
         fidelity_cutoff: float = 0.22,
+        low_frequency_boost: float = 0.5,
         source_positive: Optional[Any] = None,
         source_negative: Optional[Any] = None,
         optional_vae: Optional[Any] = None,
@@ -301,6 +306,7 @@ class FlowInversionKSampler:
             structure_fidelity=structure_fidelity,
             edit_strength=edit_strength,
             fidelity_cutoff=fidelity_cutoff,
+            low_frequency_boost=low_frequency_boost,
         )
 
         active_mask: Optional[torch.Tensor] = (
