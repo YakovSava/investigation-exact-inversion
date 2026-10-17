@@ -10,6 +10,7 @@ from .math_core import (
     compute_phase_lead_velocity,
     compute_velocity,
     is_active_mask,
+    reconstruct_denoised,
 )
 
 
@@ -42,7 +43,9 @@ class FlowInverter:
         model_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
         source_latent: torch.Tensor,
         sigmas_inversion: torch.Tensor,
-        callback: Optional[Callable[[int, torch.Tensor, int], None]] = None,
+        callback: Optional[
+            Callable[[int, torch.Tensor, torch.Tensor, int], None]
+        ] = None,
     ) -> tuple[torch.Tensor, FlowTrajectory]:
         trajectory: FlowTrajectory = FlowTrajectory(
             source_latent=source_latent.detach().clone(),
@@ -108,7 +111,7 @@ class FlowInverter:
             trajectory.states.append(x_current.clone())
 
             if callback is not None:
-                callback(step_idx, x_current, num_steps)
+                callback(step_idx, denoised_curr, x_current, num_steps)
 
         return x_current, trajectory
 
@@ -136,7 +139,9 @@ class FlowEditor:
         ] = None,
         trajectory: Optional[FlowTrajectory] = None,
         mask: Optional[torch.Tensor] = None,
-        callback: Optional[Callable[[int, torch.Tensor, int], None]] = None,
+        callback: Optional[
+            Callable[[int, torch.Tensor, torch.Tensor, int], None]
+        ] = None,
     ) -> torch.Tensor:
         x_current: torch.Tensor = initial_latent.clone()
         velocity_history: List[torch.Tensor] = []
@@ -200,17 +205,15 @@ class FlowEditor:
                     mask_edit: torch.Tensor = compute_differential_mask(
                         v_target, v_source
                     )
-                    edit_direction: torch.Tensor = (
-                        effective_strength * v_delta
-                        + (1.0 - self.structure_fidelity)
-                        * (v_target_lead - v_reconstruct)
+                    v_edit: torch.Tensor = (
+                        v_target_lead + effective_strength * v_delta
                     )
-                    step_update: torch.Tensor = (
-                        -src_disp + dt * (mask_edit * edit_direction)
+                    v_combined: torch.Tensor = (
+                        (1.0 - mask_edit) * v_reconstruct
+                        + mask_edit * v_edit
                     )
-                    v_steered: torch.Tensor = (
-                        v_reconstruct + mask_edit * edit_direction
-                    )
+                    step_update: torch.Tensor = dt * v_combined
+                    v_steered: torch.Tensor = v_combined
                 else:
                     step_update = (
                         -self.structure_fidelity * src_disp
@@ -253,6 +256,9 @@ class FlowEditor:
             x_current = x_next
 
             if callback is not None:
-                callback(step_idx, x_current, num_steps)
+                denoised_preview: torch.Tensor = reconstruct_denoised(
+                    x_current, sigma_eval, v_steered
+                )
+                callback(step_idx, denoised_preview, x_current, num_steps)
 
         return x_current

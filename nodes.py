@@ -3,6 +3,8 @@ import math
 import torch
 
 import comfy.samplers
+import comfy.utils
+import latent_preview
 from .integrator import FlowEditor, FlowInverter, FlowTrajectory
 from .math_core import is_active_mask
 
@@ -126,11 +128,39 @@ class _UnifiedFlowKSampler:
         sigmas_inversion: torch.Tensor = sigmas.flip(0)
         start_state: torch.Tensor = latent_image
 
+        num_steps: int = len(sigmas) - 1
+        total_steps: int = num_steps * 2
+        pbar: Optional[comfy.utils.ProgressBar] = (
+            None if disable_pbar else comfy.utils.ProgressBar(total_steps)
+        )
+
+        def inv_callback(
+            step: int,
+            denoised: torch.Tensor,
+            x: torch.Tensor,
+            total: int,
+        ) -> None:
+            if pbar is not None:
+                pbar.update(1)
+            if callback is not None:
+                callback(step, denoised, x, total_steps)
+
+        def edit_callback(
+            step: int,
+            denoised: torch.Tensor,
+            x: torch.Tensor,
+            total: int,
+        ) -> None:
+            if pbar is not None:
+                pbar.update(1)
+            if callback is not None:
+                callback(num_steps + step, denoised, x, total_steps)
+
         inverted_noise, trajectory = self.inverter.invert(
             model_fn=source_eval_inv,
             source_latent=start_state,
             sigmas_inversion=sigmas_inversion,
-            callback=None,
+            callback=inv_callback,
         )
         self.trajectory = trajectory
 
@@ -142,7 +172,7 @@ class _UnifiedFlowKSampler:
             model_source_fn=source_steer,
             trajectory=trajectory,
             mask=self.mask,
-            callback=None,
+            callback=edit_callback,
         )
 
 
@@ -289,6 +319,9 @@ class FlowInversionKSampler:
         guider.set_flow_conds(src_pos, src_neg, positive, negative)
         guider.set_flow_cfgs(cfg_inversion=cfg_inversion, cfg_target=cfg)
 
+        preview_callback: Any = latent_preview.prepare_callback(model, steps)
+        disable_pbar: bool = not comfy.utils.PROGRESS_BAR_ENABLED
+
         latent_tensor: torch.Tensor = latent_image["samples"]
         edited_tensor: torch.Tensor = guider.sample(
             noise=latent_tensor,
@@ -296,8 +329,8 @@ class FlowInversionKSampler:
             sampler=sampler_obj,
             sigmas=sigmas,
             denoise_mask=None,
-            callback=None,
-            disable_pbar=False,
+            callback=preview_callback,
+            disable_pbar=disable_pbar,
             seed=seed,
         )
 
