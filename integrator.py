@@ -197,14 +197,18 @@ class FlowEditor:
                         step_update: torch.Tensor = -src_disp
                         v_steered: torch.Tensor = v_target
                     else:
+                        sigma_val: float = float(sigma_curr.item())
                         v_delta_effective: torch.Tensor = v_delta
-                        if self.low_frequency_boost > 0.0:
+                        if self.low_frequency_boost > 0.0 and sigma_val > 0.65:
+                            alpha_low: float = (
+                                self.low_frequency_boost
+                                * ((sigma_val - 0.65) / 0.35)
+                            )
                             v_delta_low: torch.Tensor = extract_low_frequency(
                                 v_delta
                             )
                             v_delta_effective = (
-                                v_delta
-                                + self.low_frequency_boost * v_delta_low
+                                v_delta + alpha_low * v_delta_low
                             )
                         total_strength: float = (
                             self.edit_strength
@@ -220,7 +224,6 @@ class FlowEditor:
                             v_smooth, v_prev, dt, dt_prev,
                             self.phase_compensation,
                         )
-                        sigma_val: float = float(sigma_curr.item())
                         w_anchor: float = (
                             self.structure_fidelity
                             * max(0.0, 1.0 - sigma_val / self.fidelity_cutoff)
