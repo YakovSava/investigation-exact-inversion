@@ -1,90 +1,45 @@
-# Flow Inversion Img2Img & Editing for Flow Matching (ComfyUI)
+# Flow Inversion Img2Img (ComfyUI) — archived
 
-Исследовательский прототип редактирования изображений без масок на моделях Flow Matching (Anima, Wan2.1, Flux, SD3) в ComfyUI. Сохраняет структуру исходника (линии, пальцы, складки, фон) и меняет локальные семантические признаки (цвет волос и глаз, мелкие детали).
+**English** | [Русский](README_ru.md) | [中文](README_cn.md)
 
-**Статус:** прототип. Все наблюдения ниже качественные, получены на одной модели (Anima) и одном изображении. Количественной оценки и сравнения с базовыми методами пока нет.
+> **Status: closed. The research goal was not achieved.**
+> If you need text-based editing with flow-matching models, use **[FlowEdit](https://arxiv.org/abs/2412.08629)** instead of this repository.
 
----
+## What this project was
 
-## Принцип работы
+The goal was a full research project: a mathematically corrected inversion of the flow-matching ODE (Anima, Wan2.1, Flux, SD3) that allows mask-free Img2Img editing in ComfyUI while keeping fine details (line art, fingers, cloth folds, background).
 
-Редактирование состоит из трёх частей.
+## What it turned out to be
 
-### 1. Инверсия с записью траектории
-Исходный латент интегрируется от малых σ к большим (`FlowInverter`, Euler с компенсацией фазы и сглаживанием истории скорости). На каждом шаге сохраняются состояние `x_k` и смещение `d_k = x_{k+1} − x_k`.
+The code records the inversion trajectory and replays it step by step (`x ← x − d_k`). Reconstruction is therefore exact **by construction**, not because the ODE was shown to be invertible. On top of the replay, a FlowEdit-like delta `v_target − v_source` is added. This is structurally the same idea as FlowEdit, so the project has no real novelty over it.
 
-### 2. Реплей вместо обратного интегрирования
-При генерации шаг назад по сохранённой траектории выполняется как `x ← x − d_k`. Поэтому реконструкция точна **по построению**: сумма сохранённых смещений телескопируется и не зависит от модели. Тест `tests.py` (MSE ≈ 1e-14) проверяет эту бухгалтерию, а не обратимость ODE: обратная сходимость самой ODE этим тестом не доказывается.
+Over four days of experiments (one model, one image, one seed) the following was found:
 
-### 3. Дельта-правка
-Поверх реплея на каждом шаге добавляется поправка `dt · Δv`, где
+* Small edits work: hair color and eye color changed while the structure stayed intact.
+* Large regions (for example a white dress to black) cannot be recolored. The structure of the source latent holds the color, and a stronger edit gives destruction instead of the target color.
+* A strong edit produces a "watercolor" look: a glowing halo and washed-out forms. It is an artifact (CFG oversaturation / off-manifold collapse), uncontrollable and not usable for any practical task.
+* Several bugs and pathologies were found and patched with heuristics (wrong σ index, CFG mismatch between branches, global darkening, edge overshoot). The patched version is stable, but its edit strength is too low to be useful.
+* The previous README claimed a "mathematically exact inversion" and a "fixed watercolor effect". Both claims were wrong and have been removed.
 
-`Δv = v_target(x_edit, σ) − v_source(x_src, σ)`
+No quantitative evaluation, baselines or ablations were done, so no claim of improvement over existing methods can be made.
 
-`x_src` — сохранённое состояние траектории на том же σ, `x_edit = x_src + e` — состояние с накопленной правкой `e`. Правка вычисляется только по разности промптов (`source_positive` и `positive`), поэтому структура исходника не затрагивается там, где разности нет.
+## Recommendation
 
-### 4. Стабилизаторы дельты
-Эти приёмы эмпирические и введены, чтобы подавить обнаруженные артефакты (см. ниже):
-* вычитание медианы дельты по каналам (`remove_global_shift`): убирает глобальное потемнение;
-* низкочастотная фильтрация с пропуском части высоких частот (`extract_low_frequency`, `detail_weight`): убирает утолщение контуров;
-* удаление компоненты, параллельной `v_target` (`suppress_parallel_component`): идея APG против CFG-пересатурации;
-* ограничение нормы правки относительно `v_source` (`apply_lipschitz_stabilization`).
+Use the original method:
 
----
+> V. Kulikov, M. Kleiner, I. Huberman-Spiegelglas, T. Michaeli. **FlowEdit: Inversion-Free Text-Based Editing Using Pre-Trained Flow Models.** ICCV 2025. [arXiv:2412.08629](https://arxiv.org/abs/2412.08629)
 
-## Связь с существующими работами
+```bibtex
+@article{kulikov2024flowedit,
+  title   = {FlowEdit: Inversion-Free Text-Based Editing Using Pre-Trained Flow Models},
+  author  = {Kulikov, Vladimir and Kleiner, Matan and Huberman-Spiegelglas, Inbar and Michaeli, Tomer},
+  journal = {arXiv preprint arXiv:2412.08629},
+  year    = {2024}
+}
+```
 
-| Работа | Что делает | Пересечение с нашим кодом |
-|---|---|---|
-| **FlowEdit** (Kulikov et al., ICCV 2025, arXiv:2412.08629) | Без инверсии строит ODE между распределениями источника и цели. Правка идёт по `V_tar(Z_tar) − V_src(Z_src)`, `Z_tar = Z_FE + Z_src − X_src`. | **Сильное.** Наша формула `x_edit = x_src + e` эквивалентна `Z_tar`, а `Δv` совпадает по структуре. Отличие: у FlowEdit `Z_src` берётся из свежего случайного шума, у нас из сохранённой траектории инверсии. |
-| **RF-Inversion / Fluxtapoz** (Rout et al., arXiv:2410.10792) | Инверсия через оптимальное управление (LQR), эквивалентная выпрямленной SDE; контроллер тянет траекторию к исходнику. | **Слабое.** Общая задача (баланс верность/редактируемость). Механизм другой: у нас нет контроллера и стохастики. |
-| **DirectEdit** (Yang et al., ICML 2026, arXiv:2605.02417) | Утверждает, что накопленный дрейф возникает из-за использования шумных латентов с несовпадающими таймстепами; предлагает напрямую выравнивать прямые пути без доп. NFE. | **Идейное.** Реплей сохранённой траектории тоже убирает расхождение путей. У нас была родственная ошибка «состояние не того σ» (см. ниже). Конкретику метода (инъекция внимания, маскированное смешивание шума) мы не воспроизводим. |
+Related work that was read only at abstract level: RF-Inversion ([arXiv:2410.10792](https://arxiv.org/abs/2410.10792)), DirectEdit ([arXiv:2605.02417](https://arxiv.org/abs/2605.02417)), Adaptive Projected Guidance ([arXiv:2410.02416](https://arxiv.org/abs/2410.02416)).
 
-Мы **не** первые, кто решает эту задачу, и не утверждаем, что решили проблему обратимости ODE. Содержательно проект сейчас: FlowEdit-подобная дельта поверх траектории с записью и реплеем, плюс набор эмпирических стабилизаторов и наблюдений.
+## License
 
----
-
-## Наблюдаемые артефакты и их причины
-
-Прежнее название «эффект акварели» разговорное. Корректнее различать два явления:
-
-* **CFG-пересатурация:** ореол вокруг фигуры, передержка контраста. Возникает при завышенных CFG или силе правки (см. APG, arXiv:2410.02416).
-* **Off-manifold collapse:** латент уходит с многообразия данных, модель предсказывает размытое среднее, VAE декодирует «блоб».
-
-Причины, найденные в ходе работы:
-
-| Дефект | Причина | Решение |
-|---|---|---|
-| Блоб при `edit_strength > 1` | `edit_strength` и `semantic_multiplier` вместе давали силу ≈ 4 на ранних σ | `semantic_multiplier` убран; сила ограничивается нормой |
-| Рассинхрон σ | Состояние `states[k]` соответствовало `σ_next`, а модель вызывалась с `σ_curr` | Индекс `traj_idx + 1` |
-| Утечка CFG в дельту | `v_source` считалась при CFG=1, `v_target` при CFG=4.5 с негативом: в `Δv` попадал весь член `(cfg−1)(cond−uncond)` | Проекция против параллельной компоненты |
-| Глобальное потемнение | Концепт «black» просачивается на всю картинку | Вычитание медианы дельты |
-| Утолщённые контуры | Высокочастотное перерегулирование дельты | Низкочастотная фильтрация, `detail_weight=0.35` |
-| Уход в жёлто-оранжевый | Негатив `white dress` толкает латент от белого | Не использовать такой негатив |
-
-Практически: правка с полного шума (`denoise=1.0`) при большой силе разрушительна. FlowEdit ограничивает диапазон параметром `n_max`; у нас аналог `denoise` 0.8–0.85.
-
----
-
-## Ограничения
-
-* **Крупные области не перекрашиваются.** Белое платье остаётся белым: структура исходного латента (линии складок, тени) удерживает цвет, а увеличение силы даёт не чёрный, а разрушение. Метод пригоден для волос, глаз, мелких деталей.
-* Контраст контуров после правки чуть выше исходного.
-* Часть параметров нод не влияет на двухпромптный режим: `structure_fidelity`, `fidelity_cutoff`, `low_frequency_boost`, `phase_correction`, `history_smoothing` (последние два действуют только в инверсии и в однопромптном режиме).
-* Вся эмпирика нерепрезентативна: один рисунок, один seed.
-
----
-
-## Что нужно, чтобы это стало исследованием
-
-1. Набор изображений и промптов правки (цвет, объект, стиль) с несколькими seed.
-2. Метрики: LPIPS/PSNR к исходнику на неизменяемых областях, CLIP-score к целевому промпту, фоновая ошибка.
-3. Базовые методы: простой img2img, FlowEdit, RF-Inversion на тех же данных.
-4. Абляции: вклад каждого стабилизатора (медиана, фильтр, проекция, норма) и `denoise`.
-5. Проверка на других архитектурах (Flux, SD3.5).
-
-## Планы
-
-* Встроенная интеррогация исходных тегов (WD14/Florence-2) для автоматического `source_positive`.
-* Автоматическая локализация правки из `|v_target − v_source|` (без ручных масок).
-* Раздельная раскладка правки: семантическая фаза на ранних σ без реплея, структурная фаза с реплеем на поздних.
+MIT, see [LICENSE](LICENSE). The code is kept for reference only and is not maintained.
