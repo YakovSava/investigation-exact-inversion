@@ -210,9 +210,15 @@ class FlowEditor:
                             v_delta_effective = (
                                 v_delta + alpha_low * v_delta_low
                             )
+                        semantic_multiplier: float = (
+                            1.0 + max(0.0, (sigma_val - 0.30) / 0.70)
+                        )
                         total_strength: float = (
-                            self.edit_strength
-                            + (1.0 - self.structure_fidelity)
+                            (
+                                self.edit_strength
+                                + (1.0 - self.structure_fidelity)
+                            )
+                            * semantic_multiplier
                         )
                         v_steer: torch.Tensor = (
                             v_source + total_strength * v_delta_effective
