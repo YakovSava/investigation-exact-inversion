@@ -22,13 +22,14 @@ class FlowInversionGuider(comfy.samplers.CFGGuider):
         tgt_pos: Any,
         tgt_neg: Any,
     ) -> None:
+        conds: Dict[str, Any] = {
+            "source_positive": src_pos,
+            "source_negative": src_neg,
+            "target_positive": tgt_pos,
+            "target_negative": tgt_neg,
+        }
         self.inner_set_conds(
-            {
-                "source_positive": src_pos,
-                "source_negative": src_neg,
-                "target_positive": tgt_pos,
-                "target_negative": tgt_neg,
-            }
+            {name: cond for name, cond in conds.items() if cond is not None}
         )
 
     def set_flow_cfgs(
@@ -53,7 +54,7 @@ class FlowInversionGuider(comfy.samplers.CFGGuider):
         neg: Any = self.conds.get(f"{branch}_negative", None)
         cfg: float = (
             self.cfg_inversion
-            if phase == "inversion"
+            if (phase == "inversion" or (branch == "source" and neg is None))
             else self.cfg_target
         )
         return comfy.samplers.sampling_function(
@@ -288,19 +289,24 @@ class FlowInversionKSampler:
         optional_vae: Optional[Any] = None,
         mask: Optional[torch.Tensor] = None,
     ) -> Tuple[Any, Any, Any, Dict[str, Any], Any, torch.Tensor]:
+        import importlib
+        from . import integrator as integrator_module
+        from . import math_core as math_core_module
+
+        importlib.reload(math_core_module)
+        importlib.reload(integrator_module)
+
         src_pos: Any = (
             source_positive if source_positive is not None else positive
         )
-        src_neg: Any = (
-            source_negative if source_negative is not None else negative
-        )
+        src_neg: Any = source_negative
 
-        inverter: FlowInverter = FlowInverter(
+        inverter: FlowInverter = integrator_module.FlowInverter(
             phase_correction=phase_correction,
             history_smoothing=history_smoothing,
             max_corrector_iters=0,
         )
-        editor: FlowEditor = FlowEditor(
+        editor: FlowEditor = integrator_module.FlowEditor(
             phase_compensation=phase_correction,
             history_smoothing=history_smoothing,
             structure_fidelity=structure_fidelity,
@@ -310,7 +316,7 @@ class FlowInversionKSampler:
         )
 
         active_mask: Optional[torch.Tensor] = (
-            mask if is_active_mask(mask) else None
+            mask if math_core_module.is_active_mask(mask) else None
         )
         has_source: bool = source_positive is not None
         sampler_obj: _UnifiedFlowKSampler = _UnifiedFlowKSampler(
