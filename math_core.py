@@ -209,3 +209,17 @@ def suppress_parallel_component(
     )
     parallel: torch.Tensor = coefficient * reference
     return delta - (1.0 - parallel_weight) * parallel
+
+
+def remove_global_shift(
+    delta: torch.Tensor,
+    weight: float = 1.0,
+) -> torch.Tensor:
+    if weight <= 0.0:
+        return delta
+    flat: torch.Tensor = delta.flatten(start_dim=2).float()
+    median: torch.Tensor = flat.median(dim=-1, keepdim=True).values
+    shift: torch.Tensor = median.reshape(
+        delta.shape[:2] + (1,) * (delta.ndim - 2)
+    )
+    return delta - weight * shift.to(delta.dtype)

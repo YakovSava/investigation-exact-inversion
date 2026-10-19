@@ -11,6 +11,7 @@ from .math_core import (
     extract_low_frequency,
     is_active_mask,
     reconstruct_denoised,
+    remove_global_shift,
     suppress_parallel_component,
 )
 
@@ -127,6 +128,9 @@ class FlowEditor:
         fidelity_cutoff: float = 0.22,
         low_frequency_boost: float = 0.5,
         parallel_weight: float = 0.0,
+        shift_removal: float = 1.0,
+        delta_kernel_size: int = 5,
+        detail_weight: float = 0.35,
     ) -> None:
         self.phase_compensation: float = phase_compensation
         self.history_smoothing: float = history_smoothing
@@ -135,6 +139,9 @@ class FlowEditor:
         self.fidelity_cutoff: float = fidelity_cutoff
         self.low_frequency_boost: float = low_frequency_boost
         self.parallel_weight: float = parallel_weight
+        self.shift_removal: float = shift_removal
+        self.delta_kernel_size: int = delta_kernel_size
+        self.detail_weight: float = detail_weight
 
     def sample_edit(
         self,
@@ -199,6 +206,13 @@ class FlowEditor:
                         src_latent, sigma_eval, denoised_source
                     )
                     v_delta: torch.Tensor = v_target - v_source
+                    v_delta = remove_global_shift(v_delta, self.shift_removal)
+                    v_delta_low: torch.Tensor = extract_low_frequency(
+                        v_delta, self.delta_kernel_size
+                    )
+                    v_delta = v_delta_low + self.detail_weight * (
+                        v_delta - v_delta_low
+                    )
                     v_delta = suppress_parallel_component(
                         v_delta, v_target, self.parallel_weight
                     )
