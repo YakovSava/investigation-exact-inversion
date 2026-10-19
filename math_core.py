@@ -195,3 +195,17 @@ def extract_low_frequency(
     return delta
 
 
+def suppress_parallel_component(
+    delta: torch.Tensor,
+    reference: torch.Tensor,
+    parallel_weight: float = 0.0,
+) -> torch.Tensor:
+    dims: List[int] = list(range(1, delta.ndim))
+    ref_norm_sq: torch.Tensor = torch.sum(
+        reference * reference, dim=dims, keepdim=True
+    ).clamp_min(1e-12)
+    coefficient: torch.Tensor = (
+        torch.sum(delta * reference, dim=dims, keepdim=True) / ref_norm_sq
+    )
+    parallel: torch.Tensor = coefficient * reference
+    return delta - (1.0 - parallel_weight) * parallel

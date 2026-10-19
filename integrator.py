@@ -11,6 +11,7 @@ from .math_core import (
     extract_low_frequency,
     is_active_mask,
     reconstruct_denoised,
+    suppress_parallel_component,
 )
 
 
@@ -125,6 +126,7 @@ class FlowEditor:
         edit_strength: float = 1.0,
         fidelity_cutoff: float = 0.22,
         low_frequency_boost: float = 0.5,
+        parallel_weight: float = 0.0,
     ) -> None:
         self.phase_compensation: float = phase_compensation
         self.history_smoothing: float = history_smoothing
@@ -132,6 +134,7 @@ class FlowEditor:
         self.edit_strength: float = edit_strength
         self.fidelity_cutoff: float = fidelity_cutoff
         self.low_frequency_boost: float = low_frequency_boost
+        self.parallel_weight: float = parallel_weight
 
     def sample_edit(
         self,
@@ -186,13 +189,19 @@ class FlowEditor:
                 ].to(x_current.device)
 
                 if model_source_fn is not None:
+                    src_latent: torch.Tensor = trajectory.states[
+                        traj_idx + 1
+                    ].to(x_current.device)
                     denoised_source: torch.Tensor = model_source_fn(
-                        x_current, sigma_eval
+                        src_latent, sigma_eval
                     )
                     v_source: torch.Tensor = compute_velocity(
-                        x_current, sigma_eval, denoised_source
+                        src_latent, sigma_eval, denoised_source
                     )
                     v_delta: torch.Tensor = v_target - v_source
+                    v_delta = suppress_parallel_component(
+                        v_delta, v_target, self.parallel_weight
+                    )
                     v_steered: torch.Tensor = v_target
                     v_edit: torch.Tensor = apply_lipschitz_stabilization(
                         v_source + self.edit_strength * v_delta, v_source
